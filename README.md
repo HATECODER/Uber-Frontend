@@ -1,2 +1,4 @@
-# Uber-Frontend
-This project implements the frontend of the status tracking feature of Uber.
+# LEVEL-3 TERM-2 PROJECT
+
+- **COURSE :** CSE-326 ISD SESSIONAL
+- **PROJECT :** UBER FRONTEND (FEATURE : STATUS TRACKING)
