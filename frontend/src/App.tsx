@@ -1,10 +1,10 @@
 import { Routes, Route } from 'react-router-dom';
 import PhoneShell from './components/layout/PhoneShell';
+import DriverPanel from './pages/DriverPanel';
 import LandingPage from './pages/LandingPage';
 import TrackingPage from './pages/TrackingPage';
 import SafetyPage from './pages/SafetyPage';
 import RatingPage from './pages/RatingPage';
-import DriverPanel from './pages/DriverPanel';
 
 export default function App() {
   return (
