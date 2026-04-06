@@ -604,7 +604,10 @@ export default function DriverPanel() {
             className="text-[24px] font-bold"
             style={{ color: "#242E42", fontFamily: "Poppins, sans-serif" }}
           >
-            &#2547;{ride?.finalFare || ride?.estimatedFare || "—"}
+            &#2547;
+            {driverStatus === "COMPLETE" || driverStatus === "RATE"
+              ? ride?.finalFare || ride?.estimatedFare || 0
+              : 0}
           </span>
           {ride && (
             <span
