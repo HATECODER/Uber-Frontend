@@ -73,7 +73,7 @@ export default function DriverPanel() {
 
   // Simulation state
   const simulationRef = useRef<SimulationHandle | null>(null);
-  const [routeSource, setRouteSource] = useState<RouteSource>("manual");
+  const [_routeSource, setRouteSource] = useState<RouteSource>("manual");
   const [socketError, setSocketError] = useState("");
 
   // Map ride backend status to driver UI status
