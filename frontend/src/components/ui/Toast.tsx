@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 interface ToastProps {
   message: string;
@@ -7,7 +7,12 @@ interface ToastProps {
   duration?: number;
 }
 
-export default function Toast({ message, visible, onHide, duration = 3000 }: ToastProps) {
+export default function Toast({
+  message,
+  visible,
+  onHide,
+  duration = 1000,
+}: ToastProps) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -27,10 +32,10 @@ export default function Toast({ message, visible, onHide, duration = 3000 }: Toa
     <div
       className="absolute bottom-[120px] left-1/2 z-[100] px-5 py-3 rounded-xl text-white text-[14px] font-medium shadow-lg transition-all duration-300"
       style={{
-        transform: `translateX(-50%) translateY(${show ? '0' : '20px'})`,
+        transform: `translateX(-50%) translateY(${show ? "0" : "20px"})`,
         opacity: show ? 1 : 0,
-        background: '#242E42',
-        fontFamily: 'Inter, sans-serif',
+        background: "#242E42",
+        fontFamily: "Inter, sans-serif",
       }}
     >
       {message}

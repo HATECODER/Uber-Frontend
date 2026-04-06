@@ -306,7 +306,7 @@ export default function TrackingPage() {
     if (state.driverLocation)
       return [state.driverLocation.lat, state.driverLocation.lng];
     if (state.pickupLat) return [state.pickupLat, state.pickupLng];
-    return [23.7843, 90.4075]; // Banani, Dhaka fallback
+    return [23.866, 90.394]; // Uttara, Dhaka fallback
   }, [isPhase1, state.pickupLat, state.pickupLng, state.driverLocation]);
 
   const handleModifyRoute = async () => {

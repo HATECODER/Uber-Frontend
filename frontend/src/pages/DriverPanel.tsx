@@ -169,7 +169,6 @@ export default function DriverPanel() {
     (data: { totalFare: number; duration: string }) => {
       setDriverStatus("COMPLETE");
       setTripTime(data.duration || "18 min");
-      setTripDistance("5.2 mi");
       if (ride) setRide({ ...ride, finalFare: data.totalFare });
     },
     [ride],
@@ -216,6 +215,7 @@ export default function DriverPanel() {
       source: RouteSource;
       displayRoute: [number, number][];
       durationSeconds: number;
+      distanceMetres: number;
     }> => {
       try {
         const result = await fetchOSRMRouteDetailed(from, to, via);
@@ -228,6 +228,7 @@ export default function DriverPanel() {
             source: "osrm",
             displayRoute: result.coordinates,
             durationSeconds: result.duration,
+            distanceMetres: result.distance,
           };
         }
       } catch (e) {
@@ -244,6 +245,7 @@ export default function DriverPanel() {
           (w) => [w.lat, w.lng] as [number, number],
         ),
         durationSeconds: 0,
+        distanceMetres: 0,
       };
     },
     [],
@@ -342,10 +344,10 @@ export default function DriverPanel() {
       setDriverStatus("EN_ROUTE");
 
       // Build simulation points for arrival phase (driver → pickup)
-      const driverStart = { lat: 23.775, lng: 90.3967 }; // Airport Road near Mohakhali (major highway)
+      const driverStart = { lat: 23.87, lng: 90.3944 }; // Uttara Sector 7 (grid road)
       const pickup = { lat: ride.pickupLat, lng: ride.pickupLng };
-      // Via-waypoints keep OSRM on Airport Road (prevents side-road shortcuts)
-      const arrivalVia = [{ lat: 23.7725, lng: 90.3962 }];
+      // No via-waypoints needed — Uttara grid gives clean direct routes
+      const arrivalVia: Array<{ lat: number; lng: number }> = [];
       const { points, source, displayRoute, durationSeconds } =
         await buildSimPoints(
           driverStart,
@@ -458,9 +460,9 @@ export default function DriverPanel() {
       // Build simulation points for trip phase (pickup → destination)
       const pickup = { lat: ride.pickupLat, lng: ride.pickupLng };
       const dest = { lat: ride.destLat, lng: ride.destLng };
-      // Via-waypoint keeps OSRM on Airport Road all the way to Farmgate
-      const tripVia = [{ lat: 23.765, lng: 90.3945 }];
-      const { points, source, displayRoute, durationSeconds } =
+      // No via-waypoints needed — Uttara grid gives clean direct routes
+      const tripVia: Array<{ lat: number; lng: number }> = [];
+      const { points, source, displayRoute, durationSeconds, distanceMetres } =
         await buildSimPoints(pickup, dest, "trip", tripRoute, tripVia);
       setRouteSource(source);
       setFullRoute(displayRoute);
@@ -497,11 +499,13 @@ export default function DriverPanel() {
           );
         },
         () => {
-          // Trip simulation complete → emit complete_ride
-          socket.emit("driver:complete_ride", { rideId: ride.id });
+          // Trip simulation complete → show Complete Trip button (don't auto-emit yet)
           setDriverStatus("COMPLETE");
           setTripTime(`${Math.round((points.length * tickSec) / 60)} min`);
-          setTripDistance("5.2 mi");
+          const km = distanceMetres / 1000;
+          setTripDistance(
+            km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(distanceMetres)} m`,
+          );
         },
       );
     } catch (e) {
@@ -513,10 +517,14 @@ export default function DriverPanel() {
 
   const handleCompleteTrip = async () => {
     if (!ride) return;
+    const socket = socketRef.current;
     setLoading("complete");
     stopSim();
     try {
-      // Ride is already DESTINATION_REACHED from simulation callback — advance to RATING
+      // Emit complete_ride so rider side gets notified
+      if (socket?.connected) {
+        socket.emit("driver:complete_ride", { rideId: ride.id });
+      }
       await setRideStatus(ride.id, "RATING");
     } catch {
       /* already at correct state */
@@ -579,7 +587,7 @@ export default function DriverPanel() {
   const mapCenter = useMemo<[number, number]>(() => {
     if (driverLocation) return [driverLocation.lat, driverLocation.lng];
     if (ride) return [ride.pickupLat, ride.pickupLng];
-    return [23.77, 90.3957];
+    return [23.866, 90.394];
   }, [driverLocation, ride]);
 
   // Quick ride ID input
@@ -672,7 +680,7 @@ export default function DriverPanel() {
               </div>
               <div className="flex-1">
                 <p className="text-[11px]" style={{ color: "#8A8A8F" }}>
-                  Airport Road, Tejgaon
+                  Uttara Sector 10
                 </p>
                 <p
                   className="text-[16px] font-bold mb-3"
@@ -681,7 +689,7 @@ export default function DriverPanel() {
                   {ride.pickupAddress}
                 </p>
                 <p className="text-[11px]" style={{ color: "#8A8A8F" }}>
-                  Farmgate
+                  Uttara Sector 13
                 </p>
                 <p
                   className="text-[16px] font-bold"
@@ -717,8 +725,8 @@ export default function DriverPanel() {
       >
         <MapLayer
           center={mapCenter}
-          pickupPos={ride ? [ride.pickupLat, ride.pickupLng] : [23.77, 90.3957]}
-          destPos={ride ? [ride.destLat, ride.destLng] : [23.757, 90.3905]}
+          pickupPos={ride ? [ride.pickupLat, ride.pickupLng] : [23.866, 90.394]}
+          destPos={ride ? [ride.destLat, ride.destLng] : [23.852, 90.389]}
           driverPos={driverLocation}
           riderPos={
             ride && trackingPhase === "arrival"
@@ -1328,7 +1336,7 @@ export default function DriverPanel() {
               Time: {tripTime || "18 min"}
             </p>
             <p className="text-[14px] mb-4" style={{ color: "#8A8A8F" }}>
-              Distance: {tripDistance || "5.2 mi"}
+              Distance: {tripDistance || "—"}
             </p>
             <button
               onClick={handleCompleteTrip}

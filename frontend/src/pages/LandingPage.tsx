@@ -6,17 +6,17 @@ import CTAButton from "../components/ui/CTAButton";
 import { createRide, DEMO_RIDER_ID } from "../api/rides";
 import { useRide } from "../context/RideContext";
 
-// Pre-filled demo locations — both on Airport Road (major highway)
+// Pre-filled demo locations — Uttara, Dhaka (grid layout = clean OSRM routes)
 const PICKUP = {
-  lat: 23.77,
-  lng: 90.3957,
-  address: "Airport Road, Tejgaon, Dhaka",
+  lat: 23.866,
+  lng: 90.394,
+  address: "Uttara Sector 10, Dhaka",
 };
 
 const DESTINATION = {
-  lat: 23.757,
-  lng: 90.3905,
-  address: "Farmgate, Dhaka",
+  lat: 23.852,
+  lng: 90.389,
+  address: "Uttara Sector 13, Dhaka",
 };
 
 export default function LandingPage() {
