@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ToastProps {
   message: string;
@@ -14,17 +14,21 @@ export default function Toast({
   duration = 1000,
 }: ToastProps) {
   const [show, setShow] = useState(false);
+  // Keep a stable ref to onHide so the effect doesn't re-run (and reset the
+  // timer) every time the parent re-renders with a new inline arrow function.
+  const onHideRef = useRef(onHide);
+  onHideRef.current = onHide;
 
   useEffect(() => {
     if (visible) {
       setShow(true);
       const timer = setTimeout(() => {
         setShow(false);
-        setTimeout(onHide, 300);
+        setTimeout(() => onHideRef.current(), 300);
       }, duration);
       return () => clearTimeout(timer);
     }
-  }, [visible, duration, onHide]);
+  }, [visible, duration]); // onHide intentionally omitted — accessed via ref
 
   if (!visible && !show) return null;
 

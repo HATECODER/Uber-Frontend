@@ -179,7 +179,7 @@ export default function LandingPage() {
         )}
 
         <CTAButton
-          label="CONTINUE"
+          label="REQUEST RIDE"
           onClick={handleBookRide}
           loading={loading}
         />

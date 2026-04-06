@@ -363,11 +363,6 @@ export default function TrackingPage() {
           >
             Ride Status
           </span>
-          {rideId && (
-            <p className="text-white/70 text-[10px] font-mono">
-              {rideId.slice(0, 8)}
-            </p>
-          )}
         </div>
       </div>
 

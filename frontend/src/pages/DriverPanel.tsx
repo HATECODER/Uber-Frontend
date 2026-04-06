@@ -609,25 +609,6 @@ export default function DriverPanel() {
               ? ride?.finalFare || ride?.estimatedFare || 0
               : 0}
           </span>
-          {ride && (
-            <span
-              className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 font-mono truncate max-w-[120px]"
-              style={{ color: "#8A8A8F" }}
-            >
-              {ride.id.slice(0, 8)}
-            </span>
-          )}
-          {ride && (
-            <span
-              className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-              style={{
-                background: routeSource === "osrm" ? "#4CE5B1" : "#FFD700",
-                color: "#242E42",
-              }}
-            >
-              {routeSource === "osrm" ? "OSRM" : "Manual"}
-            </span>
-          )}
           <div className="w-[40px] h-[40px] rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="#8A8A8F">
               <path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
