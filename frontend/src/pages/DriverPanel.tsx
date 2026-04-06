@@ -6,6 +6,7 @@ import {
   startSimulation,
   buildSimulationPointsFromOsrm,
   buildSimulationPointsFromManual,
+  computeTickInterval,
   type SimulationHandle,
   type SimulationPoint,
   type RouteSource,
@@ -150,21 +151,27 @@ export default function DriverPanel() {
     to: { lat: number; lng: number },
     phase: 'arrival' | 'trip',
     fallbackWaypoints: Array<{ lat: number; lng: number }>,
-  ): Promise<{ points: SimulationPoint[]; source: RouteSource; displayRoute: [number, number][] }> => {
+    via?: Array<{ lat: number; lng: number }>,
+  ): Promise<{ points: SimulationPoint[]; source: RouteSource; displayRoute: [number, number][]; durationSeconds: number }> => {
     try {
-      const result = await fetchOSRMRouteDetailed(from, to);
+      const result = await fetchOSRMRouteDetailed(from, to, via);
       if (result.coordinates.length > 1) {
+        console.log(`[buildSimPoints] ${phase}: OSRM success — ${result.coordinates.length} coords, ${result.duration}s, via=${via?.length ?? 0} waypoints`);
         return {
-          points: buildSimulationPointsFromOsrm(result.coordinates, phase),
+          points: buildSimulationPointsFromOsrm(result.coordinates),
           source: 'osrm',
           displayRoute: result.coordinates,
+          durationSeconds: result.duration,
         };
       }
-    } catch { /* fallback below */ }
+    } catch (e) { console.warn(`[buildSimPoints] ${phase}: OSRM failed`, e); }
+    console.log(`[buildSimPoints] ${phase}: falling back to manual route (${fallbackWaypoints.length} waypoints)`);
+    const points = await buildSimulationPointsFromManual(fallbackWaypoints);
     return {
-      points: buildSimulationPointsFromManual(fallbackWaypoints),
+      points,
       source: 'manual',
       displayRoute: fallbackWaypoints.map(w => [w.lat, w.lng] as [number, number]),
+      durationSeconds: 0,
     };
   }, []);
 
@@ -256,24 +263,33 @@ export default function DriverPanel() {
       setDriverStatus('EN_ROUTE');
 
       // Build simulation points for arrival phase (driver → pickup)
-      const driverStart = { lat: 23.8103, lng: 90.4125 }; // Gulshan Circle start
+      const driverStart = { lat: 23.7750, lng: 90.3967 }; // Airport Road near Mohakhali (major highway)
       const pickup = { lat: ride.pickupLat, lng: ride.pickupLng };
-      const { points, source, displayRoute } = await buildSimPoints(driverStart, pickup, 'arrival', pickupRoute);
+      // Via-waypoints keep OSRM on Airport Road (prevents side-road shortcuts)
+      const arrivalVia = [
+        { lat: 23.7725, lng: 90.3962 },
+      ];
+      const { points, source, displayRoute, durationSeconds } = await buildSimPoints(driverStart, pickup, 'arrival', pickupRoute, arrivalVia);
       setRouteSource(source);
       setFullRoute(displayRoute);
       arrivalRouteFetched.current = true;
 
-      // Start simulation — emits driver:location:update every 4s
+      const tickMs = computeTickInterval(durationSeconds, points.length);
+      const tickSec = tickMs / 1000;
+      console.log(`[Driver] arrival route: source=${source}, points=${points.length}, duration=${durationSeconds}s, tickMs=${tickMs}`);
+
+      // Start simulation — emits driver:location:update at dynamic tick rate
       stopSim();
       simulationRef.current = startSimulation(
         socket,
         ride.id,
         points,
         'arrival',
+        tickMs,
         (point, idx, total) => {
           setDriverLocation({ lat: point.lat, lng: point.lng, heading: point.heading });
           setRoutePoints(prev => [...prev, [point.lat, point.lng]]);
-          const etaSec = (total - 1 - idx) * 4;
+          const etaSec = Math.round((total - 1 - idx) * tickSec);
           setEta(etaSec >= 60 ? `${Math.ceil(etaSec / 60)} min` : `${etaSec} sec`);
         },
         () => {
@@ -345,10 +361,18 @@ export default function DriverPanel() {
       // Build simulation points for trip phase (pickup → destination)
       const pickup = { lat: ride.pickupLat, lng: ride.pickupLng };
       const dest = { lat: ride.destLat, lng: ride.destLng };
-      const { points, source, displayRoute } = await buildSimPoints(pickup, dest, 'trip', tripRoute);
+      // Via-waypoint keeps OSRM on Airport Road all the way to Farmgate
+      const tripVia = [
+        { lat: 23.7650, lng: 90.3945 },
+      ];
+      const { points, source, displayRoute, durationSeconds } = await buildSimPoints(pickup, dest, 'trip', tripRoute, tripVia);
       setRouteSource(source);
       setFullRoute(displayRoute);
       tripRouteFetched.current = true;
+
+      const tickMs = computeTickInterval(durationSeconds, points.length);
+      const tickSec = tickMs / 1000;
+      console.log(`[Driver] trip route: source=${source}, points=${points.length}, duration=${durationSeconds}s, tickMs=${tickMs}`);
 
       stopSim();
       simulationRef.current = startSimulation(
@@ -356,10 +380,11 @@ export default function DriverPanel() {
         ride.id,
         points,
         'trip',
+        tickMs,
         (point, idx, total) => {
           setDriverLocation({ lat: point.lat, lng: point.lng, heading: point.heading });
           setRoutePoints(prev => [...prev, [point.lat, point.lng]]);
-          const etaSec = (total - 1 - idx) * 4;
+          const etaSec = Math.round((total - 1 - idx) * tickSec);
           setEta(etaSec >= 60 ? `${Math.ceil(etaSec / 60)} min` : `${etaSec} sec`);
           setNavInstruction(idx < total / 2 ? 'Go Straight for 10 meters' : 'Turn left in 50 meters');
         },
@@ -367,7 +392,7 @@ export default function DriverPanel() {
           // Trip simulation complete → emit complete_ride
           socket.emit('driver:complete_ride', { rideId: ride.id });
           setDriverStatus('COMPLETE');
-          setTripTime(`${Math.round(points.length * 4 / 60)} min`);
+          setTripTime(`${Math.round(points.length * tickSec / 60)} min`);
           setTripDistance('5.2 mi');
         },
       );
@@ -431,7 +456,7 @@ export default function DriverPanel() {
   const mapCenter = useMemo<[number, number]>(() => {
     if (driverLocation) return [driverLocation.lat, driverLocation.lng];
     if (ride) return [ride.pickupLat, ride.pickupLng];
-    return [23.7843, 90.4075];
+    return [23.7700, 90.3957];
   }, [driverLocation, ride]);
 
   // Quick ride ID input
@@ -488,9 +513,9 @@ export default function DriverPanel() {
               <div className="w-[10px] h-[10px] rounded-full" style={{ background: '#4CE5B1' }} />
             </div>
             <div className="flex-1">
-              <p className="text-[11px]" style={{ color: '#8A8A8F' }}>Kemal Ataturk Avenue, Banani</p>
+              <p className="text-[11px]" style={{ color: '#8A8A8F' }}>Airport Road, Tejgaon</p>
               <p className="text-[16px] font-bold mb-3" style={{ color: '#242E42' }}>{ride.pickupAddress}</p>
-              <p className="text-[11px]" style={{ color: '#8A8A8F' }}>Dilkusha C/A, Motijheel</p>
+              <p className="text-[11px]" style={{ color: '#8A8A8F' }}>Farmgate</p>
               <p className="text-[16px] font-bold" style={{ color: '#242E42' }}>{ride.destAddress}</p>
             </div>
           </div>
@@ -507,9 +532,10 @@ export default function DriverPanel() {
       >
         <MapLayer
           center={mapCenter}
-          pickupPos={ride ? [ride.pickupLat, ride.pickupLng] : [23.7843, 90.4075]}
-          destPos={ride ? [ride.destLat, ride.destLng] : [23.7530, 90.4015]}
+          pickupPos={ride ? [ride.pickupLat, ride.pickupLng] : [23.7700, 90.3957]}
+          destPos={ride ? [ride.destLat, ride.destLng] : [23.7570, 90.3905]}
           driverPos={driverLocation}
+          riderPos={ride && trackingPhase === 'arrival' ? [ride.pickupLat, ride.pickupLng] : null}
           fullRoute={fullRoute.length > 1 ? fullRoute : undefined}
           routePoints={routePoints}
           trackingPhase={trackingPhase}

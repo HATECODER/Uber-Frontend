@@ -10,6 +10,8 @@ interface MapLayerProps {
   pickupPos: [number, number];
   destPos: [number, number];
   driverPos?: { lat: number; lng: number; heading: number } | null;
+  /** Position of the rider (blue marker). */
+  riderPos?: [number, number] | null;
   /** Full OSRM road-matched route. When provided, renders completed+remaining split. */
   fullRoute?: [number, number][];
   /** Fallback trail of visited GPS points (used when fullRoute not yet loaded). */
@@ -49,7 +51,7 @@ function MapAutoCenter({ center }: { center: [number, number] }) {
   return null;
 }
 
-export default function MapLayer({ center, pickupPos, destPos, driverPos, fullRoute, routePoints, trackingPhase, zoom = 14 }: MapLayerProps) {
+export default function MapLayer({ center, pickupPos, destPos, driverPos, riderPos, fullRoute, routePoints, trackingPhase, zoom = 14 }: MapLayerProps) {
   const isDashed = trackingPhase === 'arrival';
 
   // Split fullRoute into completed (gray) + remaining (green) at driver position
@@ -83,6 +85,22 @@ export default function MapLayer({ center, pickupPos, destPos, driverPos, fullRo
         radius={8}
         pathOptions={{ color: '#4CE5B1', fillColor: '#4CE5B1', fillOpacity: 1, weight: 2 }}
       />
+
+      {/* Blue rider checkpoint — pulsing outer ring + solid inner dot */}
+      {riderPos && (
+        <>
+          <CircleMarker
+            center={riderPos}
+            radius={14}
+            pathOptions={{ color: '#4A90D9', fillColor: '#4A90D9', fillOpacity: 0.2, weight: 2, opacity: 0.5 }}
+          />
+          <CircleMarker
+            center={riderPos}
+            radius={6}
+            pathOptions={{ color: '#FFFFFF', fillColor: '#4A90D9', fillOpacity: 1, weight: 2 }}
+          />
+        </>
+      )}
 
       <Marker position={destPos} icon={destIcon} />
 

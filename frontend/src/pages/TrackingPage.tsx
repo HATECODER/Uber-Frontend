@@ -249,8 +249,8 @@ export default function TrackingPage() {
     if (!rideId || !newDestAddress.trim()) return;
     try {
       await updateRoute(rideId, {
-        destLat: state.destLat + 0.005,
-        destLng: state.destLng + 0.003,
+        destLat: state.destLat,
+        destLng: state.destLng,
         destAddress: newDestAddress,
       });
     } catch {
@@ -327,6 +327,7 @@ export default function TrackingPage() {
             pickupPos={[state.pickupLat, state.pickupLng]}
             destPos={[state.destLat, state.destLng]}
             driverPos={state.driverLocation ? { ...state.driverLocation } : null}
+            riderPos={state.trackingPhase === 'arrival' ? [state.pickupLat, state.pickupLng] : null}
             fullRoute={fullRoute.length > 1 ? fullRoute : undefined}
             routePoints={routePoints}
             trackingPhase={state.trackingPhase}

@@ -1,14 +1,15 @@
 /**
  * Driver simulation engine.
  *
- * Walks a list of SimulationPoint[] at ~4 s intervals, emitting
+ * Walks a list of SimulationPoint[] emitting
  * `driver:location:update` telemetry to the backend via Socket.io.
  *
- * Supports OSRM-derived routes and manual fallback routes through
- * a unified SimulationPoint interface.
+ * Tick interval is computed dynamically from OSRM duration so the
+ * car follows every road curve without cutting through buildings.
  */
 
 import type { Socket } from 'socket.io-client';
+import { matchToRoad } from '../api/routing';
 
 // ── Types ──
 
@@ -54,20 +55,28 @@ function haversineDistance(
 
 // ── OSRM route → simulation points ──
 
+/** Max simulation points (prevents socket spam on very long routes). */
+const MAX_SIM_POINTS = 120;
+/** Minimum tick interval in ms (floor to avoid overwhelming the socket). */
+const MIN_TICK_MS = 300;
+/** Default tick interval when no OSRM duration is available. */
+const DEFAULT_TICK_MS = 4000;
+/** Speed multiplier for demo — 6x means a 5 min drive completes in ~50 sec. */
+const SIM_SPEED_MULTIPLIER = 6;
+
 /**
- * Downsample an OSRM coordinate array ([lat, lng] already flipped from
- * Leaflet format) to a target count, keeping extra resolution at turns.
+ * Lightly downsample to MAX_SIM_POINTS only when the OSRM route is
+ * extremely dense.  Keeps road-level precision intact for typical routes.
  */
 function downsample(
   coords: Array<{ lat: number; lng: number }>,
-  targetCount: number,
+  maxCount: number,
 ): Array<{ lat: number; lng: number }> {
-  if (coords.length <= targetCount) return coords;
+  if (coords.length <= maxCount) return coords;
 
-  // Always keep first and last
-  const step = (coords.length - 1) / (targetCount - 1);
+  const step = (coords.length - 1) / (maxCount - 1);
   const result: Array<{ lat: number; lng: number }> = [];
-  for (let i = 0; i < targetCount; i++) {
+  for (let i = 0; i < maxCount; i++) {
     const idx = Math.min(Math.round(i * step), coords.length - 1);
     result.push(coords[idx]);
   }
@@ -111,16 +120,17 @@ function assignSpeedProfile(points: Array<{ lat: number; lng: number; heading: n
   });
 }
 
+/**
+ * Build simulation points from OSRM coordinates.
+ * Uses ALL OSRM points — they are already road-matched, so no
+ * downsampling is needed.  MIN_TICK_MS prevents socket flooding.
+ */
 export function buildSimulationPointsFromOsrm(
   osrmCoords: [number, number][], // [lat, lng] already flipped
-  phase: TrackingPhase,
 ): SimulationPoint[] {
-  const targetCount = phase === 'arrival' ? 20 : 28;
   const asObjects = osrmCoords.map(([lat, lng]) => ({ lat, lng }));
-  const sampled = downsample(asObjects, targetCount);
 
-  // Compute headings
-  const withHeadings = sampled.map((p, i, arr) => {
+  const withHeadings = asObjects.map((p, i, arr) => {
     const next = arr[Math.min(i + 1, arr.length - 1)];
     return {
       ...p,
@@ -133,9 +143,36 @@ export function buildSimulationPointsFromOsrm(
   return assignSpeedProfile(withHeadings);
 }
 
-export function buildSimulationPointsFromManual(
+/**
+ * Build simulation points from manual/fallback waypoints.
+ * Snaps them to roads via OSRM Match API first; if that fails,
+ * uses the raw waypoints as-is.
+ */
+export async function buildSimulationPointsFromManual(
   waypoints: Array<{ lat: number; lng: number }>,
-): SimulationPoint[] {
+): Promise<SimulationPoint[]> {
+  // Try snapping to roads via Match API
+  try {
+    const matched = await matchToRoad(waypoints);
+    if (matched.length > 1) {
+      const sampled = downsample(
+        matched.map(([lat, lng]) => ({ lat, lng })),
+        MAX_SIM_POINTS,
+      );
+      const withHeadings = sampled.map((p, i, arr) => {
+        const next = arr[Math.min(i + 1, arr.length - 1)];
+        return {
+          ...p,
+          heading: i < arr.length - 1
+            ? calculateHeading(p.lat, p.lng, next.lat, next.lng)
+            : (i > 0 ? calculateHeading(arr[i - 1].lat, arr[i - 1].lng, p.lat, p.lng) : 0),
+        };
+      });
+      return assignSpeedProfile(withHeadings);
+    }
+  } catch { /* fall through to raw waypoints */ }
+
+  // Fallback: use raw waypoints without road snapping
   const withHeadings = waypoints.map((p, i, arr) => {
     const next = arr[Math.min(i + 1, arr.length - 1)];
     return {
@@ -147,6 +184,16 @@ export function buildSimulationPointsFromManual(
   });
 
   return assignSpeedProfile(withHeadings);
+}
+
+/**
+ * Compute the tick interval in ms from OSRM duration and point count.
+ * Falls back to DEFAULT_TICK_MS (4s) when duration is unavailable.
+ */
+export function computeTickInterval(durationSeconds: number, pointCount: number): number {
+  if (!durationSeconds || pointCount <= 1) return DEFAULT_TICK_MS;
+  const raw = (durationSeconds * 1000) / pointCount / SIM_SPEED_MULTIPLIER;
+  return Math.max(raw, MIN_TICK_MS);
 }
 
 // ── Simulation runner ──
@@ -161,11 +208,13 @@ export function startSimulation(
   rideId: string,
   points: SimulationPoint[],
   phase: TrackingPhase,
+  tickMs: number = DEFAULT_TICK_MS,
   onTick?: (point: SimulationPoint, index: number, total: number) => void,
   onComplete?: () => void,
 ): SimulationHandle {
   let index = 0;
   let stopped = false;
+  const tickSeconds = tickMs / 1000;
 
   const timer = setInterval(() => {
     if (stopped || index >= points.length) {
@@ -180,7 +229,7 @@ export function startSimulation(
       if (i === 0) return 0;
       return sum + haversineDistance(arr[i - 1].lat, arr[i - 1].lng, p.lat, p.lng);
     }, 0);
-    const etaSeconds = Math.round(((points.length - 1 - index) * 4));
+    const etaSeconds = Math.round((points.length - 1 - index) * tickSeconds);
     const etaStr = etaSeconds >= 60
       ? `${Math.ceil(etaSeconds / 60)} min`
       : `${etaSeconds} sec`;
@@ -203,7 +252,7 @@ export function startSimulation(
 
     onTick?.(point, index, points.length);
     index += 1;
-  }, 4000);
+  }, tickMs);
 
   return {
     stop: () => {

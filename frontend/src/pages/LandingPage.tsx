@@ -6,17 +6,17 @@ import CTAButton from '../components/ui/CTAButton';
 import { createRide, DEMO_RIDER_ID } from '../api/rides';
 import { useRide } from '../context/RideContext';
 
-// Pre-filled demo locations in Dhaka
+// Pre-filled demo locations — both on Airport Road (major highway)
 const PICKUP = {
-  lat: 23.7843,
-  lng: 90.4075,
-  address: 'Banani, Road 11, Dhaka',
+  lat: 23.7700,
+  lng: 90.3957,
+  address: 'Airport Road, Tejgaon, Dhaka',
 };
 
 const DESTINATION = {
-  lat: 23.7530,
-  lng: 90.4015,
-  address: 'Motijheel, Dhaka',
+  lat: 23.7570,
+  lng: 90.3905,
+  address: 'Farmgate, Dhaka',
 };
 
 export default function LandingPage() {
@@ -130,7 +130,7 @@ export default function LandingPage() {
         {/* Distance */}
         <div className="flex items-center justify-between py-3 mb-3" style={{ borderTop: '1px solid #CCCCCC', borderBottom: '1px solid #CCCCCC' }}>
           <span className="text-[15px] font-semibold" style={{ color: '#242E42' }}>Distance</span>
-          <span className="text-[15px]" style={{ color: '#8A8A8F' }}>4.2 km</span>
+          <span className="text-[15px]" style={{ color: '#8A8A8F' }}>3.6 km</span>
         </div>
 
         {error && (
